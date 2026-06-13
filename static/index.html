@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL语句管理助手</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="header">
+        <h1>SQL语句管理助手</h1>
+        <button onclick="showLLMConfig()">⚙️ 设置</button>
+    </header>
+    
+    <div class="main-content">
+        <aside class="sidebar" id="sidebar">
+            <button class="sidebar-toggle" onclick="toggleSidebar()" title="收起菜单">◀</button>
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" onclick="switchTab('aliases')">别名</button>
+                <button class="sidebar-tab" onclick="switchTab('tables')">基础表</button>
+                <button class="sidebar-tab" onclick="switchTab('sqler')" style="font-weight: 600;">SQLer</button>
+            </div>
+            <div class="sidebar-content">
+                <div id="tab-aliases" class="tab-content">
+                    <!-- 搜索框 -->
+                    <div class="search-box">
+                        <input type="text" id="alias-search-input" placeholder="搜索别名名称或描述...">
+                        <button class="search-btn" onclick="searchAliases()">🔍</button>
+                        <button class="clear-btn" id="alias-clear-btn" onclick="clearAliasSearch()" style="display:none;">✕</button>
+                    </div>
+                    <div id="alias-search-info" class="search-info" style="display:none;">
+                        <span id="alias-search-count"></span>
+                        <button class="mini-btn" title="显示全部" onclick="clearAliasSearch()">📋</button>
+                    </div>
+                    <!-- 分组树 -->
+                    <div id="group-tree" class="group-tree">
+                        <div class="group-header">
+                            <span>分组</span>
+                            <button class="mini-btn" onclick="showAddGroupModal()">+</button>
+                        </div>
+                        <ul id="group-list" class="group-list">
+                        </ul>
+                        <div class="alias-header">
+                            <span>未分组别名</span>
+                        </div>
+                        <ul id="alias-list" class="item-list">
+                        </ul>
+                    </div>
+                </div>
+                <div id="tab-tables" class="tab-content" style="display: none;">
+                    <!-- 搜索框 -->
+                    <div class="search-box">
+                        <input type="text" id="table-search-input" placeholder="搜索表名称或描述...">
+                        <button class="search-btn" onclick="searchTables()">🔍</button>
+                        <button class="clear-btn" id="table-clear-btn" onclick="clearTableSearch()" style="display:none;">✕</button>
+                    </div>
+                    <div id="table-search-info" class="search-info" style="display:none;">
+                        <span id="table-search-count"></span>
+                        <button class="mini-btn" title="显示全部" onclick="clearTableSearch()">📋</button>
+                    </div>
+                    <!-- 分组树 -->
+                    <div id="tables-group-tree" class="group-tree">
+                        <div class="group-header">
+                            <span>分组</span>
+                            <button class="mini-btn" onclick="showAddTableGroupModal()">+</button>
+                        </div>
+                        <ul id="tables-group-list" class="group-list">
+                        </ul>
+                        <div class="alias-header">
+                            <span>未分组表</span>
+                        </div>
+                        <ul id="tables-list" class="item-list">
+                        </ul>
+                    </div>
+                </div>
+                <div id="tab-sqler" class="tab-content" style="display: none;">
+                    <div class="sqler-context" id="sqler-context">
+                        <div class="sqler-context-header">
+                            <span>📝 上下文信息</span>
+                            <button class="mini-btn" onclick="clearSqlerContext()" title="清空">🗑️</button>
+                        </div>
+                        <div class="sqler-system-context">
+                            <textarea id="sqler-system-input" placeholder="系统上下文信息（别名、表结构等）"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <textarea id="sqler-prompt" placeholder="输入自然语言描述SQL需求..." style="width: 100%; min-height: 60px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; resize: vertical; font-size: 0.9rem; display: none; margin-bottom: 0.5rem;"></textarea>
+                <select id="llm-model-select-sidebar" class="dialect-select" style="display: none; width: 100%; margin-bottom: 0.5rem;"></select>
+                <button class="add-btn" onclick="showAddAliasModal()" id="add-alias-btn">+ 添加别名</button>
+                <button class="add-btn" onclick="generateSQLFromSidebar()" id="generate-sqler-btn" style="display: none;">🤖 生成SQL</button>
+            </div>
+        </aside>
+        
+        <section class="editor-area">
+            <div class="editor-toolbar">
+                <button class="action-btn primary" onclick="optimizeSQL()">⚡ 解析优化</button>
+                <button class="action-btn secondary" onclick="resolveSQL()">🔄 还原SQL</button>
+                <button class="action-btn secondary" onclick="formatSQL()">🎨 格式化</button>
+                <button class="action-btn secondary" onclick="saveSQLAsAlias()">💾 保存别名</button>
+                <button class="action-btn secondary" onclick="llmOptimizeSQL()" id="llm-optimize-btn" disabled>🤖 大模型优化</button>
+                
+                <span style="flex: 1;"></span>
+                
+                <button class="action-btn secondary" onclick="clearEditor()">🗑️ 清空</button>
+                <button class="action-btn secondary" onclick="copyEditor()">📋 复制</button>
+            </div>
+            
+            <div class="editor-container">
+                <div class="line-numbers" id="line-numbers"></div>
+                <textarea id="sql-editor" class="editor" placeholder="输入SQL语句..."></textarea>
+                <div id="completion-container"></div>
+            </div>
+            <div class="editor-status-bar">
+                <span id="alias-indicator" style="color: gray; font-size: 0.8rem;">未识别到别名</span>
+            </div>
+            
+            <div class="result-area">
+                <div class="result-header">
+                    <h3>结果输出</h3>
+                    <div class="result-actions">
+                        <div class="result-actions-left">
+                            <button class="action-btn secondary" onclick="formatResultSQL()" id="format-result-btn" disabled>🔧 格式化</button>
+                            <button class="action-btn secondary" onclick="llmOptimizeResultSQL()" id="llm-optimize-result-btn" disabled>🤖 大模型优化</button>
+                        </div>
+                        <div class="result-actions-right">
+                            <button class="action-btn secondary" onclick="clearResult()" id="clear-btn">🗑️ 清空</button>
+                            <button class="action-btn secondary" onclick="copyResult()" id="copy-btn" disabled>📋 复制</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="result-container">
+                    <div class="result-line-numbers" id="result-line-numbers"></div>
+                    <textarea id="result-content" class="result-content" spellcheck="false"></textarea>
+                </div>
+                <div id="analysis-container"></div>
+            </div>
+            
+            <div class="resizer" id="resizer" draggable="true"></div>
+        </section>
+    </div>
+
+    <div id="add-alias-modal" class="modal-overlay" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title">添加别名</h2>
+                <button class="modal-close" onclick="closeModal('add-alias-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="alias-id">
+                <div class="form-group">
+                    <label>别名名称</label>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="text" id="alias-name" placeholder="输入别名" style="flex: 1;">
+                        <span style="color: #667eea; font-weight: 500; font-size: 0.9rem;">_</span>
+                    </div>
+                    <small style="color: #888; font-size: 0.8rem;">别名会自动添加下划线后缀，使用时需带下划线</small>
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="alias-desc" placeholder="输入描述">
+                </div>
+                <div class="form-group">
+                    <label>分组</label>
+                    <select id="alias-group">
+                        <option value="">无分组</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>方言</label>
+                    <select id="alias-dialect">
+                        <option value="mysql">MySQL</option>
+                        <option value="trino">Trino</option>
+                        <option value="doris">Doris</option>
+                        <option value="hive">Hive</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>SQL内容</label>
+                    <textarea id="alias-sql" placeholder="输入SQL语句"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>可用列（自动识别，可编辑）</label>
+                    <div class="columns-editor">
+                        <div id="alias-columns-list">
+                            <div class="column-row">
+                                <input type="text" class="column-name" placeholder="列名">
+                                <select class="column-type">
+                                    <option value="STRING">STRING</option>
+                                    <option value="BIGINT">BIGINT</option>
+                                    <option value="INT">INT</option>
+                                    <option value="VARCHAR">VARCHAR</option>
+                                    <option value="DECIMAL">DECIMAL</option>
+                                    <option value="DATETIME">DATETIME</option>
+                                    <option value="DATE">DATE</option>
+                                    <option value="TIMESTAMP">TIMESTAMP</option>
+                                    <option value="BOOLEAN">BOOLEAN</option>
+                                    <option value="FLOAT">FLOAT</option>
+                                    <option value="DOUBLE">DOUBLE</option>
+                                </select>
+                                <input type="text" class="column-comment" placeholder="字段备注">
+                                <button class="mini-btn" onclick="removeAliasColumnRow(this)">-</button>
+                            </div>
+                        </div>
+                        <button class="action-btn secondary" onclick="addAliasColumnRow()" style="margin-top: 0.5rem;">+ 添加列</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>依赖表（自动识别，可编辑）</label>
+                    <div class="dependencies-editor">
+                        <div id="alias-dependencies-list">
+                            <div class="dependency-row">
+                                <input type="text" class="dependency-name" placeholder="表名">
+                                <input type="text" class="dependency-desc" placeholder="表描述">
+                                <button class="mini-btn" onclick="removeDependencyRow(this)">-</button>
+                            </div>
+                        </div>
+                        <button class="action-btn secondary" onclick="addDependencyRow()" style="margin-top: 0.5rem;">+ 添加依赖表</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('add-alias-modal')">取消</button>
+                <button class="action-btn primary" onclick="saveAlias()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-group-modal" class="modal-overlay" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="group-modal-title">添加分组</h2>
+                <button class="modal-close" onclick="closeModal('add-group-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="group-id">
+                <div class="form-group">
+                    <label>分组名称</label>
+                    <input type="text" id="group-name" placeholder="输入分组名称">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="group-desc" placeholder="输入描述">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('add-group-modal')">取消</button>
+                <button class="action-btn primary" onclick="saveGroup()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-alias-modal" class="modal-overlay" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="view-modal-title">查看别名</h2>
+                <button class="modal-close" onclick="closeModal('view-alias-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="view-group">
+                    <label>别名名称</label>
+                    <span id="view-alias-name"></span>
+                </div>
+                <div class="view-group">
+                    <label>描述</label>
+                    <span id="view-alias-desc"></span>
+                </div>
+                <div class="view-group">
+                    <label>分组</label>
+                    <span id="view-alias-group"></span>
+                </div>
+                <div class="view-group">
+                    <label>方言</label>
+                    <span id="view-alias-dialect"></span>
+                </div>
+                <div class="view-group">
+                    <label>创建时间</label>
+                    <span id="view-alias-created"></span>
+                </div>
+                <div class="view-group">
+                    <label>SQL内容</label>
+                    <pre id="view-alias-sql"></pre>
+                </div>
+                <div class="view-group">
+                    <label>可用列（自动识别）</label>
+                    <div id="view-alias-columns"></div>
+                </div>
+                <div class="view-group">
+                    <label>依赖表（自动识别）</label>
+                    <div id="view-alias-dependencies"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('view-alias-modal')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-confirm-modal" class="modal-overlay" style="display: none;">
+        <div class="modal small">
+            <div class="modal-header">
+                <h2>确认删除</h2>
+                <button class="modal-close" onclick="closeModal('delete-confirm-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="delete-message">确定要删除吗？</p>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('delete-confirm-modal')">取消</button>
+                <button class="action-btn danger" onclick="confirmDelete()">确定删除</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="move-alias-modal" class="modal-overlay" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>移动别名到分组</h2>
+                <button class="modal-close" onclick="closeModal('move-alias-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="move-alias-id">
+                <div class="form-group">
+                    <label>选择目标分组</label>
+                    <select id="move-group-select">
+                        <option value="">无分组</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('move-alias-modal')">取消</button>
+                <button class="action-btn primary" onclick="moveAlias()">移动</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="llm-config-modal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>大模型配置</h2>
+                <button class="modal-close" onclick="closeModal('llm-config-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="llm-config-list" class="llm-config-list">
+                </div>
+                <div class="llm-config-divider">
+                    <span>添加新配置</span>
+                </div>
+                <input type="hidden" id="llm-config-id">
+                <div class="form-group">
+                    <label>配置名称</label>
+                    <input type="text" id="llm-config-name" placeholder="例如: GPT-4配置">
+                </div>
+                <div class="form-group">
+                    <label>API密钥</label>
+                    <input type="password" id="llm-api-key" placeholder="输入API密钥">
+                </div>
+                <div class="form-group">
+                    <label>模型名称</label>
+                    <input type="text" id="llm-model-name" placeholder="例如: gpt-4">
+                </div>
+                <div class="form-group">
+                    <label>API地址</label>
+                    <input type="text" id="llm-api-url" placeholder="例如: https://api.openai.com/v1">
+                </div>
+                <div class="form-group">
+                    <label>最大Token</label>
+                    <input type="number" id="llm-max-tokens" min="1" max="8192" value="4096">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('llm-config-modal')">取消</button>
+                <button class="action-btn secondary" onclick="testLLMConnection()">测试连接</button>
+                <button class="action-btn primary" onclick="saveLLMConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-table-modal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 id="table-modal-title">添加表</h2>
+                <button class="modal-close" onclick="closeModal('add-table-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="table-id">
+<input type="hidden" id="table-group-id">
+                <div class="form-group">
+                    <label>JSON文本解析（可选）</label>
+                    <textarea id="table-json-input" placeholder="粘贴JSON格式的表元数据，自动解析表信息"></textarea>
+                    <button class="action-btn secondary" onclick="parseTableJson()" style="margin-top: 0.5rem;">解析JSON</button>
+                </div>
+                <div class="form-group">
+                    <label>表名</label>
+                    <input type="text" id="table-name" placeholder="输入表名">
+                </div>
+                <div class="form-group">
+                    <label>模式名（可选）</label>
+                    <input type="text" id="table-schema" placeholder="例如: default">
+                </div>
+                <div class="form-group">
+                    <label>主键（可选）</label>
+                    <input type="text" id="table-primary-key" placeholder="例如: id">
+                </div>
+                <div class="form-group">
+                    <label>分区信息（可选）</label>
+                    <input type="text" id="table-partition" placeholder="例如: dt">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="table-desc" placeholder="输入描述">
+                </div>
+                <div class="form-group">
+                    <label>方言</label>
+                    <select id="table-dialect">
+                        <option value="mysql">MySQL</option>
+                        <option value="trino">Trino</option>
+                        <option value="doris">Doris</option>
+                        <option value="hive">Hive</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>列定义</label>
+                    <div class="columns-editor">
+                        <div id="columns-list">
+                            <div class="column-row">
+                                <input type="text" class="column-name" placeholder="列名" value="id">
+                                <select class="column-type">
+                                    <option value="BIGINT">BIGINT</option>
+                                    <option value="INT">INT</option>
+                                    <option value="VARCHAR">VARCHAR</option>
+                                    <option value="STRING">STRING</option>
+                                    <option value="DECIMAL">DECIMAL</option>
+                                    <option value="DATETIME">DATETIME</option>
+                                    <option value="DATE">DATE</option>
+                                    <option value="TIMESTAMP">TIMESTAMP</option>
+                                    <option value="BOOLEAN">BOOLEAN</option>
+                                    <option value="FLOAT">FLOAT</option>
+                                    <option value="DOUBLE">DOUBLE</option>
+                                </select>
+                                <input type="text" class="column-comment" placeholder="注释">
+                                <button class="mini-btn" onclick="removeColumnRow(this)">-</button>
+                            </div>
+                        </div>
+                        <button class="action-btn secondary" onclick="addColumnRow()" style="margin-top: 0.5rem;">+ 添加列</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('add-table-modal')">取消</button>
+                <button class="action-btn primary" onclick="saveTable()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-table-modal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>查看表</h2>
+                <button class="modal-close" onclick="closeModal('view-table-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="view-group">
+                    <label>表名</label>
+                    <span id="view-table-name"></span>
+                </div>
+                <div class="view-group">
+                    <label>模式名</label>
+                    <span id="view-table-schema"></span>
+                </div>
+                <div class="view-group">
+                    <label>分组</label>
+                    <span id="view-table-group"></span>
+                </div>
+                <div class="view-group">
+                    <label>主键</label>
+                    <span id="view-table-primary-key"></span>
+                </div>
+                <div class="view-group">
+                    <label>分区信息</label>
+                    <span id="view-table-partition"></span>
+                </div>
+                <div class="view-group">
+                    <label>描述</label>
+                    <span id="view-table-desc"></span>
+                </div>
+                <div class="view-group">
+                    <label>方言</label>
+                    <span id="view-table-dialect"></span>
+                </div>
+                <div class="view-group">
+                    <label>列信息</label>
+                    <div id="view-table-columns"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('view-table-modal')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-table-group-modal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 id="table-group-modal-title">添加表分组</h2>
+                <button class="modal-close" onclick="closeModal('add-table-group-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="table-group-id">
+                <div class="form-group">
+                    <label>分组名称</label>
+                    <input type="text" id="table-group-name" placeholder="输入分组名称">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="table-group-desc" placeholder="输入描述">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('add-table-group-modal')">取消</button>
+                <button class="action-btn primary" onclick="saveTableGroup()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="move-table-modal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>移动表到分组</h2>
+                <button class="modal-close" onclick="closeModal('move-table-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="move-table-id">
+                <div class="form-group">
+                    <label>选择分组</label>
+                    <select id="move-table-group-select">
+                        <option value="">无分组</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn secondary" onclick="closeModal('move-table-modal')">取消</button>
+                <button class="action-btn primary" onclick="moveTableToGroup()">移动</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/monokai.css">
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sql/sql.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
