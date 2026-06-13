@@ -233,7 +233,6 @@ JOIN order_base o ON u.user_id = o.user_id
 └── docs/                     # 文档
     ├── 最佳实践指南.md
     ├── 功能组合深度分析.md
-    └── 使用场景支撑分析.md
 ```
 
 ***
@@ -332,4 +331,4 @@ pyinstaller sql_assistant.spec --clean
 
 ***
 
-**感谢使用个人SQL助手！🚀**
+**感谢使用个人SQL智能助手！🚀**
